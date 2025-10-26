@@ -25,13 +25,10 @@ Base = declarative_base()
 
 def get_db():
     """
-    Get database session
+    Get database session - use as context manager or manually close
     """
     db = SessionLocal()
-    try:
-        return db
-    finally:
-        db.close()
+    return db
 
 async def init_db():
     """

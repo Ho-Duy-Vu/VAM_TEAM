@@ -1,6 +1,70 @@
-import type { DocumentInfo, DocumentRegion, ProcessingStatus, DocumentJsonData } from './types'
+import type { DocumentInfo, DocumentRegion, ProcessingStatus, DocumentJsonData, PersonInfo } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+
+// Authentication API
+export const authApi = {
+  // Register new user
+  register: async (userData: {
+    email: string
+    full_name: string
+    phone?: string
+    password: string
+  }) => {
+    const response = await fetch(`${API_BASE}/auth/register`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email: userData.email,
+        full_name: userData.full_name,
+        phone: userData.phone,
+        password: userData.password,
+      }),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Registration failed')
+    }
+    
+    return response.json()
+  },
+
+  // Login user
+  login: async (credentials: { email: string; password: string }) => {
+    const response = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(credentials),
+    })
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.detail || 'Login failed')
+    }
+    
+    return response.json()
+  },
+
+  // Get current user
+  getCurrentUser: async (token: string) => {
+    const response = await fetch(`${API_BASE}/auth/me?token=${token}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Failed to get user info')
+    }
+    
+    return response.json()
+  },
+}
 
 export const documentApi = {
   // Upload document
@@ -97,10 +161,14 @@ export const documentApi = {
     const response = await fetch(`${API_BASE}/documents/${documentId}/markdown`)
     
     if (!response.ok) {
+      if (response.status === 404) {
+        return ''
+      }
       throw new Error('Failed to get document markdown')
     }
     
-    return response.text()
+    const data = await response.json()
+    return data.markdown || ''
   },
 
   // Get document JSON data
@@ -129,5 +197,74 @@ export const documentApi = {
     }
     
     return response.json()
+  },
+
+  // Analyze document automatically with Gemini
+  analyzeDocumentAuto: async (documentId: string): Promise<DocumentJsonData> => {
+    const response = await fetch(`${API_BASE}/documents/${documentId}/analyze-auto`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Auto analysis failed')
+    }
+    
+    return response.json()
+  },
+
+  // Extract person information from document (CCCD/ID/Driver License)
+  extractPersonInfo: async (documentId: string): Promise<PersonInfo> => {
+    const response = await fetch(`${API_BASE}/documents/${documentId}/extract-person-info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Person info extraction failed')
+    }
+    
+    const data = await response.json()
+    return data.person_info
+  },
+
+  // Extract vehicle information from document (Giấy đăng ký xe / Cà vẹt)
+  extractVehicleInfo: async (documentId: string) => {
+    const response = await fetch(`${API_BASE}/documents/${documentId}/extract-vehicle-info`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Vehicle info extraction failed')
+    }
+    
+    const data = await response.json()
+    return data.vehicle_info
+  },
+
+  // Get insurance recommendation based on address/region
+  getInsuranceRecommendation: async (documentId: string) => {
+    const response = await fetch(`${API_BASE}/documents/${documentId}/recommend-insurance`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    
+    if (!response.ok) {
+      throw new Error('Insurance recommendation failed')
+    }
+    
+    const data = await response.json()
+    console.log('🔍 API Response:', data)
+    // Backend returns full response with document_id, recommendation, message
+    return data
   },
 }

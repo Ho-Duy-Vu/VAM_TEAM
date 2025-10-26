@@ -2,17 +2,26 @@ import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { useMutation } from '@tanstack/react-query'
-import { Upload, FileText, Image, Loader2 } from 'lucide-react'
+import { Upload, FileText, Image, Loader2, X, CheckCircle2 } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Progress } from '../components/ui/progress'
 import { documentApi } from '../api/client'
 import { useDocumentStore } from '../store/document'
 
+interface UploadedFileInfo {
+  file: File
+  previewUrl: string
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error'
+  progress: number
+  documentId?: string
+  error?: string
+}
+
 export const UploadPage: React.FC = () => {
   const navigate = useNavigate()
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFileInfo[]>([])
+  const [isProcessingBatch, setIsProcessingBatch] = useState(false)
   
   const { setProcessing, setCurrentDocumentId } = useDocumentStore()
   
@@ -20,54 +29,69 @@ export const UploadPage: React.FC = () => {
     mutationFn: documentApi.uploadDocument,
     onSuccess: (data) => {
       setCurrentDocumentId(data.document_id)
-      // Start processing simulation
-      setProcessing(true, 0)
-      simulateProcessing(data.document_id)
+      // Processing handled per file
     },
     onError: (error) => {
       console.error('Upload failed:', error)
-      setProcessing(false)
     }
   })
   
-  const simulateProcessing = async (documentId: string) => {
+  const processFile = async (fileInfo: UploadedFileInfo, index: number) => {
     try {
-      // Start processing on backend
-      const processResponse = await documentApi.startProcessing(documentId)
-      const jobId = processResponse.job_id
+      // Update status to uploading
+      setUploadedFiles(prev => prev.map((f, i) => 
+        i === index ? { ...f, status: 'uploading', progress: 10 } : f
+      ))
       
-      // Poll for completion
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await documentApi.getJobStatus(jobId)
-          setProcessing(true, status.progress)
-          
-          if (status.status === 'DONE') {
-            clearInterval(pollInterval)
-            setTimeout(() => {
-              setProcessing(false)
-              navigate(`/document/${documentId}`)
-            }, 1000)
-          } else if (status.status === 'ERROR') {
-            clearInterval(pollInterval)
-            setProcessing(false)
-            console.error('Processing failed')
-          }
-        } catch (error) {
-          console.error('Failed to check job status:', error)
-        }
-      }, 500) // Poll every 500ms
+      // Upload file
+      const uploadResult = await documentApi.uploadDocument(fileInfo.file)
+      const documentId = uploadResult.document_id
       
-      // Cleanup after 30 seconds max
-      setTimeout(() => {
-        clearInterval(pollInterval)
-        setProcessing(false)
-        navigate(`/document/${documentId}`)
-      }, 30000)
+      // Update status to processing
+      setUploadedFiles(prev => prev.map((f, i) => 
+        i === index ? { ...f, status: 'processing', progress: 40, documentId } : f
+      ))
       
+      // Auto-analyze
+      await documentApi.analyzeDocumentAuto(documentId)
+      
+      // Complete
+      setUploadedFiles(prev => prev.map((f, i) => 
+        i === index ? { ...f, status: 'completed', progress: 100 } : f
+      ))
+      
+      return documentId
     } catch (error) {
       console.error('Processing failed:', error)
-      setProcessing(false)
+      setUploadedFiles(prev => prev.map((f, i) => 
+        i === index ? { ...f, status: 'error', error: error instanceof Error ? error.message : 'Unknown error' } : f
+      ))
+      throw error
+    }
+  }
+  
+  const handleAnalyzeAll = async () => {
+    setIsProcessingBatch(true)
+    
+    try {
+      // Process all files sequentially
+      for (let i = 0; i < uploadedFiles.length; i++) {
+        if (uploadedFiles[i].status === 'pending') {
+          await processFile(uploadedFiles[i], i)
+        }
+      }
+      
+      // Navigate to first completed document
+      const firstCompleted = uploadedFiles.find(f => f.status === 'completed' && f.documentId)
+      if (firstCompleted?.documentId) {
+        setTimeout(() => {
+          navigate(`/document/${firstCompleted.documentId}`)
+        }, 1000)
+      }
+    } catch (error) {
+      console.error('Batch processing failed:', error)
+    } finally {
+      setIsProcessingBatch(false)
     }
   }
   
@@ -76,33 +100,35 @@ export const UploadPage: React.FC = () => {
       'application/pdf': ['.pdf'],
       'image/*': ['.png', '.jpg', '.jpeg']
     },
-    maxFiles: 1,
+    multiple: true, // ⭐ ENABLE MULTIPLE FILES
     onDrop: (acceptedFiles) => {
-      const file = acceptedFiles[0]
-      if (file) {
-        setUploadedFile(file)
-        
-        // Create preview URL
-        const url = URL.createObjectURL(file)
-        setPreviewUrl(url)
-        
-        return () => URL.revokeObjectURL(url)
-      }
+      const newFiles: UploadedFileInfo[] = acceptedFiles.map(file => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+        status: 'pending',
+        progress: 0
+      }))
+      
+      setUploadedFiles(prev => [...prev, ...newFiles])
     }
   })
   
-  const handleAnalyze = () => {
-    if (uploadedFile) {
-      uploadMutation.mutate(uploadedFile)
-    }
+  const removeFile = (index: number) => {
+    setUploadedFiles(prev => {
+      const updated = [...prev]
+      URL.revokeObjectURL(updated[index].previewUrl)
+      updated.splice(index, 1)
+      return updated
+    })
   }
-
-  const isProcessing = useDocumentStore(state => state.isProcessing)
-  const processingProgress = useDocumentStore(state => state.processingProgress)
+  
+  const viewDocument = (documentId: string) => {
+    navigate(`/document/${documentId}`)
+  }
   
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center space-x-3 mb-4">
@@ -117,25 +143,25 @@ export const UploadPage: React.FC = () => {
             Document Analysis System
           </h2>
           <p className="text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
-            Upload your insurance documents for AI-powered analysis. Our system can extract text, 
+            Upload multiple insurance documents for AI-powered analysis. Our system can extract text, 
             identify tables, signatures, and provide structured data insights.
           </p>
         </div>
         
-        {!isProcessing ? (
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* Upload Area */}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Upload Area */}
+          <div className="lg:col-span-1">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Upload size={20} />
-                  <span>Upload Document</span>
+                  <span>Upload Documents</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div
                   {...getRootProps()}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+                  className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
                     isDragActive
                       ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
                       : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800'
@@ -143,93 +169,184 @@ export const UploadPage: React.FC = () => {
                 >
                   <input {...getInputProps()} />
                   
-                  {uploadedFile ? (
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-center space-x-2 text-green-600 dark:text-green-400">
-                        <FileText size={24} />
-                        <span className="font-medium">File Selected</span>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {uploadedFile.name}
+                  <div className="space-y-3">
+                    <div className="flex justify-center">
+                      <Upload className="w-10 h-10 text-gray-400" />
+                    </div>
+                    <div>
+                      <p className="text-base font-medium text-gray-900 dark:text-gray-100">
+                        {isDragActive ? 'Drop files here' : 'Choose files or drag here'}
                       </p>
-                      <p className="text-xs text-gray-500 dark:text-gray-500">
-                        {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        PDF, PNG, JPG • Multiple files supported
                       </p>
                     </div>
-                  ) : (
-                    <div className="space-y-4">
-                      <div className="flex justify-center">
-                        <Upload className="w-12 h-12 text-gray-400" />
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium text-gray-900 dark:text-gray-100">
-                          {isDragActive ? 'Drop file here' : 'Choose file or drag here'}
-                        </p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                          PDF, PNG, JPG up to 10MB
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
                 
-                {uploadedFile && (
-                  <div className="mt-4">
+                {uploadedFiles.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                      <span>{uploadedFiles.length} file(s) selected</span>
+                      <Button
+                        onClick={() => setUploadedFiles([])}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        Clear All
+                      </Button>
+                    </div>
+                    
                     <Button 
-                      onClick={handleAnalyze}
+                      onClick={handleAnalyzeAll}
                       className="w-full"
                       size="lg"
-                      disabled={uploadMutation.isPending}
+                      disabled={isProcessingBatch || uploadedFiles.every(f => f.status !== 'pending')}
                     >
-                      {uploadMutation.isPending ? (
+                      {isProcessingBatch ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Starting Analysis...
+                          Processing...
                         </>
                       ) : (
-                        'Analyze Document'
+                        `Analyze ${uploadedFiles.filter(f => f.status === 'pending').length} Document(s)`
                       )}
                     </Button>
                   </div>
                 )}
               </CardContent>
             </Card>
-            
-            {/* Preview Area */}
+          </div>
+          
+          {/* Files List */}
+          <div className="lg:col-span-2">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
-                  <Image size={20} />
-                  <span>Preview</span>
+                  <FileText size={20} />
+                  <span>Files ({uploadedFiles.length})</span>
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {previewUrl ? (
-                  <div className="border rounded-lg overflow-hidden">
-                    {uploadedFile?.type.includes('image') ? (
-                      <img
-                        src={previewUrl}
-                        alt="Document preview"
-                        className="w-full h-64 object-contain bg-gray-50 dark:bg-gray-800"
-                      />
-                    ) : (
-                      <div className="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-800">
-                        <div className="text-center">
-                          <FileText size={48} className="mx-auto text-gray-400 mb-2" />
-                          <p className="text-gray-600 dark:text-gray-400">PDF Preview</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-500">
-                            {uploadedFile?.name}
-                          </p>
+                {uploadedFiles.length > 0 ? (
+                  <div className="space-y-3 max-h-[600px] overflow-y-auto">
+                    {uploadedFiles.map((fileInfo, index) => (
+                      <div
+                        key={index}
+                        className="border rounded-lg p-4 bg-white dark:bg-gray-800"
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Preview Thumbnail */}
+                          <div className="flex-shrink-0">
+                            {fileInfo.file.type.includes('image') ? (
+                              <img
+                                src={fileInfo.previewUrl}
+                                alt={fileInfo.file.name}
+                                className="w-16 h-16 object-cover rounded border"
+                              />
+                            ) : (
+                              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded border flex items-center justify-center">
+                                <FileText className="w-8 h-8 text-gray-400" />
+                              </div>
+                            )}
+                          </div>
+                          
+                          {/* File Info */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                                  {fileInfo.file.name}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  {(fileInfo.file.size / 1024 / 1024).toFixed(2)} MB
+                                </p>
+                              </div>
+                              
+                              {/* Status Badge */}
+                              <div className="flex items-center gap-2">
+                                {fileInfo.status === 'pending' && (
+                                  <span className="text-xs px-2 py-1 bg-gray-100 text-gray-600 rounded">
+                                    Pending
+                                  </span>
+                                )}
+                                {fileInfo.status === 'uploading' && (
+                                  <span className="text-xs px-2 py-1 bg-blue-100 text-blue-600 rounded flex items-center gap-1">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Uploading
+                                  </span>
+                                )}
+                                {fileInfo.status === 'processing' && (
+                                  <span className="text-xs px-2 py-1 bg-yellow-100 text-yellow-600 rounded flex items-center gap-1">
+                                    <Loader2 className="w-3 h-3 animate-spin" />
+                                    Processing
+                                  </span>
+                                )}
+                                {fileInfo.status === 'completed' && (
+                                  <>
+                                    <span className="text-xs px-2 py-1 bg-green-100 text-green-600 rounded flex items-center gap-1">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Completed
+                                    </span>
+                                    {fileInfo.documentId && (
+                                      <Button
+                                        onClick={() => viewDocument(fileInfo.documentId!)}
+                                        size="sm"
+                                        variant="outline"
+                                      >
+                                        View
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                                {fileInfo.status === 'error' && (
+                                  <span className="text-xs px-2 py-1 bg-red-100 text-red-600 rounded">
+                                    Error
+                                  </span>
+                                )}
+                                
+                                {fileInfo.status === 'pending' && (
+                                  <Button
+                                    onClick={() => removeFile(index)}
+                                    variant="ghost"
+                                    size="sm"
+                                  >
+                                    <X className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            
+                            {/* Progress Bar */}
+                            {(fileInfo.status === 'uploading' || fileInfo.status === 'processing') && (
+                              <div className="mt-2">
+                                <Progress value={fileInfo.progress} className="h-2" />
+                                <p className="text-xs text-gray-500 mt-1">
+                                  {fileInfo.progress}%
+                                </p>
+                              </div>
+                            )}
+                            
+                            {/* Error Message */}
+                            {fileInfo.status === 'error' && fileInfo.error && (
+                              <p className="text-xs text-red-600 mt-2">
+                                {fileInfo.error}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    )}
+                    ))}
                   </div>
                 ) : (
-                  <div className="h-64 border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg flex items-center justify-center">
+                  <div className="h-64 flex items-center justify-center border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-lg">
                     <div className="text-center">
-                      <Image size={48} className="mx-auto text-gray-400 mb-2" />
+                      <FileText size={48} className="mx-auto text-gray-400 mb-2" />
                       <p className="text-gray-500 dark:text-gray-400">
-                        Document preview will appear here
+                        No files uploaded yet
+                      </p>
+                      <p className="text-sm text-gray-400 dark:text-gray-500">
+                        Drop files or click the upload area
                       </p>
                     </div>
                   </div>
@@ -237,94 +354,52 @@ export const UploadPage: React.FC = () => {
               </CardContent>
             </Card>
           </div>
-        ) : (
-          /* Processing State */
-          <Card className="max-w-2xl mx-auto">
-            <CardHeader className="text-center">
-              <CardTitle className="flex items-center justify-center space-x-2 text-2xl">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-                <span>Processing Document</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="text-center">
-                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                  Our AI is analyzing your document. This may take a few moments...
-                </p>
-                <Progress value={processingProgress} className="w-full h-3" />
-                <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">
-                  {processingProgress}% Complete
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-2 gap-4 text-center">
-                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  <h3 className="font-semibold text-blue-900 dark:text-blue-100">
-                    Text Recognition
-                  </h3>
-                  <p className="text-sm text-blue-700 dark:text-blue-300">
-                    Extracting text content
-                  </p>
-                </div>
-                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                  <h3 className="font-semibold text-green-900 dark:text-green-100">
-                    Structure Analysis
-                  </h3>
-                  <p className="text-sm text-green-700 dark:text-green-300">
-                    Identifying layout elements
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        </div>
         
         {/* Features */}
-        {!isProcessing && (
-          <div className="mt-12 grid md:grid-cols-3 gap-6">
-            <Card>
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  Text Extraction
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Accurate OCR technology extracts all text content from your documents
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Image className="w-6 h-6 text-green-600 dark:text-green-400" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  Visual Analysis
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Identifies tables, signatures, logos and document structure
-                </p>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mx-auto mb-4">
-                  <Upload className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  Data Export
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Export structured data in JSON, Markdown, or other formats
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        <div className="mt-12 grid md:grid-cols-3 gap-6">
+          <Card>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Batch Processing
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Upload and analyze multiple documents simultaneously
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <Image className="w-6 h-6 text-green-600 dark:text-green-400" />
+              </div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Visual Analysis
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Identifies tables, signatures, logos and document structure
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card>
+            <CardContent className="p-6 text-center">
+              <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center mx-auto mb-4">
+                <CheckCircle2 className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                Real-time Progress
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Track processing status for each document in real-time
+              </p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   )

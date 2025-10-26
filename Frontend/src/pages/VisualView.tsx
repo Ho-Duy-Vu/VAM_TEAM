@@ -1,13 +1,7 @@
-import { OverlayCanvas } from '../components/OverlayCanvas'
 import { useDocumentStore } from '../store/document'
-import type { DocumentRegion } from '../api/types'
 
 export default function VisualView() {
-  const { regions, currentDocument, currentPage, selectedRegion, setSelectedRegion } = useDocumentStore()
-  
-  const handleRegionClick = (region: DocumentRegion) => {
-    setSelectedRegion(region.id === selectedRegion ? null : region.id)
-  }
+  const { currentDocument, currentPage } = useDocumentStore()
   
   // Get current page image URL from document data
   const currentPageImage = currentDocument?.pages?.[currentPage]?.image_url || ''
@@ -23,29 +17,24 @@ export default function VisualView() {
         <div className="p-3 border-b border-gray-200 dark:border-gray-700">
           <h3 className="font-semibold text-gray-900 dark:text-gray-100">Document Preview</h3>
           <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-            Interactive overlay showing detected regions
+            Original document image
           </p>
         </div>
         
-        <div className="p-4 h-full">
-          {/* Debug info in development */}
-          {import.meta.env.DEV && (
-            <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border text-xs">
-              <strong>Debug:</strong> Regions: {regions.length}, Page: {currentPage}, 
-              Page regions: {regions.filter(r => r.page === currentPage).length}
-            </div>
-          )}
-          
-          <div className="h-96">
+        <div className="p-4 h-full overflow-auto">
+          <div className="flex items-center justify-center min-h-[500px]">
             {hasValidImage ? (
-              <OverlayCanvas
-                documentImageUrl={imageUrl}
-                regions={regions}
-                page={currentPage}
-                onRegionClick={handleRegionClick}
+              <img
+                src={imageUrl}
+                alt="Document preview"
+                className="max-w-full h-auto rounded shadow-lg"
+                onError={(e) => {
+                  console.error('Image failed to load:', imageUrl)
+                  e.currentTarget.style.display = 'none'
+                }}
               />
             ) : (
-              <div className="h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded">
+              <div className="h-full flex items-center justify-center bg-gray-100 dark:bg-gray-800 rounded p-8">
                 <div className="text-center">
                   <p className="text-gray-500 dark:text-gray-400">Document image loading...</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -58,68 +47,24 @@ export default function VisualView() {
         </div>
       </div>
       
-      {/* Region Statistics */}
+      {/* Document Info */}
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-        <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Analysis Summary</h4>
+        <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Document Information</h4>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Total Regions:</span>
-            <span className="font-medium">{regions.length}</span>
+            <span className="text-gray-600 dark:text-gray-400">Current Page:</span>
+            <span className="font-medium">{currentPage + 1}</span>
           </div>
           <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Text Regions:</span>
-            <span className="font-medium">{regions.filter(r => r.type === 'text').length}</span>
+            <span className="text-gray-600 dark:text-gray-400">Total Pages:</span>
+            <span className="font-medium">{currentDocument?.pages?.length || 0}</span>
           </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Tables:</span>
-            <span className="font-medium">{regions.filter(r => r.type === 'table').length}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-600 dark:text-gray-400">Signatures:</span>
-            <span className="font-medium">{regions.filter(r => r.type === 'signature').length}</span>
+          <div className="flex justify-between col-span-2">
+            <span className="text-gray-600 dark:text-gray-400">Status:</span>
+            <span className="font-medium">{currentDocument?.status || 'Unknown'}</span>
           </div>
         </div>
       </div>
-        
-      {/* Selected region details */}
-      {selectedRegion && (
-        <div className="bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-4">
-          {(() => {
-            const region = regions.find(r => r.id === selectedRegion)
-            if (!region) return null
-            
-            return (
-              <div>
-                <h4 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                  Selected: {region.type.toUpperCase()}
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-gray-500 dark:text-gray-400">Text:</span>
-                    <p className="text-gray-900 dark:text-gray-100 font-mono text-xs mt-1">
-                      {region.text || 'N/A'}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <span className="text-gray-500 dark:text-gray-400">Confidence:</span>
-                      <p className="text-gray-900 dark:text-gray-100">
-                        {region.confidence ? Math.round(region.confidence * 100) : 95}%
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500 dark:text-gray-400">Page:</span>
-                      <p className="text-gray-900 dark:text-gray-100">
-                        {region.page + 1}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )
-          })()}
-        </div>
-      )}
     </div>
   )
 }

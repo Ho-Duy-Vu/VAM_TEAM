@@ -15,7 +15,9 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 }) => {
   const [editableData, setEditableData] = useState<DocumentJsonData>(data)
   const [isEditing, setIsEditing] = useState(false)
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(['policy', 'animals']))
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(['summary', 'main', 'pages'])
+  )
   
   useEffect(() => {
     setEditableData(data)
@@ -37,10 +39,14 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
   }
   
   const renderValue = (value: unknown): React.ReactNode => {
+    if (value === null || value === undefined) {
+      return <span className="text-gray-400">N/A</span>
+    }
+    
     if (typeof value === 'boolean') {
       return (
-        <span className={`px-2 py-1 rounded text-xs ${
-          value ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+        <span className={`px-2 py-1 rounded text-xs font-medium ${
+          value ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100' : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-100'
         }`}>
           {value ? 'Yes' : 'No'}
         </span>
@@ -55,174 +61,78 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       )
     }
     
-    return <span className="text-gray-500">Object</span>
+    if (Array.isArray(value)) {
+      return <span className="text-blue-600 dark:text-blue-400">Array ({value.length} items)</span>
+    }
+    
+    return <span className="text-purple-600 dark:text-purple-400">Object</span>
   }
   
-  const PolicySection = () => (
+  const renderArrayValues = (arr: unknown[]): React.ReactNode => {
+    if (!arr || arr.length === 0) {
+      return <span className="text-gray-400 text-sm">None</span>
+    }
+    
+    return (
+      <div className="flex flex-wrap gap-2">
+        {arr.map((item, idx) => (
+          <span 
+            key={idx} 
+            className="px-2 py-1 bg-blue-50 dark:bg-blue-900 text-blue-700 dark:text-blue-100 rounded text-sm"
+          >
+            {typeof item === 'object' ? JSON.stringify(item) : String(item)}
+          </span>
+        ))}
+      </div>
+    )
+  }
+  
+  // Document Summary Section
+  const SummarySection = () => (
     <Card className="mb-4">
       <CardHeader 
-        className="cursor-pointer" 
-        onClick={() => toggleSection('policy')}
+        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" 
+        onClick={() => toggleSection('summary')}
       >
         <CardTitle className="flex items-center space-x-2">
-          {expandedSections.has('policy') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span>Policy Information</span>
+          {expandedSections.has('summary') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <span>Document Summary</span>
         </CardTitle>
       </CardHeader>
-      {expandedSections.has('policy') && (
-        <CardContent className="space-y-3">
+      {expandedSections.has('summary') && (
+        <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium text-gray-500">Carrier:</label>
-              {renderValue(editableData.policy?.carrier)}
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Document Type:</label>
+              <p className="text-lg font-semibold mt-1">{editableData.document_type || 'Unknown'}</p>
             </div>
             <div>
-              <label className="text-sm font-medium text-gray-500">Issue Date:</label>
-              {renderValue(editableData.policy?.issue_date)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Certificate Number:</label>
-              {renderValue(editableData.policy?.certificate_number)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Purpose:</label>
-              {renderValue(editableData.policy?.purpose)}
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Confidence:</label>
+              <p className="text-lg font-semibold mt-1">
+                {((editableData.confidence || 0) * 100).toFixed(0)}%
+              </p>
             </div>
           </div>
-        </CardContent>
-      )}
-    </Card>
-  )
-
-  const AnimalsSection = () => (
-    <Card className="mb-4">
-      <CardHeader 
-        className="cursor-pointer" 
-        onClick={() => toggleSection('animals')}
-      >
-        <CardTitle className="flex items-center space-x-2">
-          {expandedSections.has('animals') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span>Animals ({editableData.animals?.length || 0})</span>
-        </CardTitle>
-      </CardHeader>
-      {expandedSections.has('animals') && (
-        <CardContent>
-          {editableData.animals?.map((animal, index) => (
-            <div key={index} className="mb-4 p-3 border rounded-lg">
-              <h4 className="font-medium mb-2">Animal #{index + 1}</h4>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div>
-                  <span className="text-gray-500">Species:</span>
-                  <p>{animal.species || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Name:</span>
-                  <p>{animal.name || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Microchip:</span>
-                  <p>{animal.microchip_id || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Rabies Status:</span>
-                  <p>{animal.rabies_vaccination || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Health Status:</span>
-                  <p>{animal.health_status || 'N/A'}</p>
-                </div>
-                <div>
-                  <span className="text-gray-500">Special Markings:</span>
-                  <p>{animal.special_markings || 'N/A'}</p>
-                </div>
-              </div>
-            </div>
-          )) || <p className="text-gray-500">No animals listed</p>}
-        </CardContent>
-      )}
-    </Card>
-  )
-
-  const VeterinarySection = () => (
-    <Card className="mb-4">
-      <CardHeader 
-        className="cursor-pointer" 
-        onClick={() => toggleSection('veterinary')}
-      >
-        <CardTitle className="flex items-center space-x-2">
-          {expandedSections.has('veterinary') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span>Veterinary Certification</span>
-        </CardTitle>
-      </CardHeader>
-      {expandedSections.has('veterinary') && (
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-4">
+          
+          {editableData.title && (
             <div>
-              <label className="text-sm font-medium text-gray-500">Veterinarian:</label>
-              {renderValue(editableData.veterinary_certification?.veterinarian_name)}
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Title:</label>
+              <p className="text-gray-900 dark:text-gray-100 mt-1">{editableData.title}</p>
             </div>
+          )}
+          
+          {editableData.summary && (
             <div>
-              <label className="text-sm font-medium text-gray-500">Clinic:</label>
-              {renderValue(editableData.veterinary_certification?.clinic_name)}
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Summary:</label>
+              <p className="text-gray-900 dark:text-gray-100 mt-1 text-sm">{editableData.summary}</p>
             </div>
+          )}
+          
+          {editableData.total_pages && editableData.total_pages > 1 && (
             <div>
-              <label className="text-sm font-medium text-gray-500">Address:</label>
-              {renderValue(editableData.veterinary_certification?.address)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Date:</label>
-              {renderValue(editableData.veterinary_certification?.certification_date)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">License:</label>
-              {renderValue(editableData.veterinary_certification?.license_number)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Signature Verified:</label>
-              {renderValue(editableData.veterinary_certification?.signature_verified)}
-            </div>
-          </div>
-        </CardContent>
-      )}
-    </Card>
-  )
-
-  const AttestationSection = () => (
-    <Card className="mb-4">
-      <CardHeader 
-        className="cursor-pointer" 
-        onClick={() => toggleSection('attestation')}
-      >
-        <CardTitle className="flex items-center space-x-2">
-          {expandedSections.has('attestation') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-          <span>Attestation</span>
-        </CardTitle>
-      </CardHeader>
-      {expandedSections.has('attestation') && (
-        <CardContent className="space-y-3">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm font-medium text-gray-500">Health Examination:</label>
-              {renderValue(editableData.attestation?.health_examination_completed)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Vaccination Records:</label>
-              {renderValue(editableData.attestation?.vaccination_records_verified)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Transport Authorization:</label>
-              {renderValue(editableData.attestation?.transport_authorization)}
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-500">Veterinarian Signature:</label>
-              {renderValue(editableData.attestation?.veterinarian_signature)}
-            </div>
-          </div>
-          {editableData.attestation?.special_notes && (
-            <div>
-              <label className="text-sm font-medium text-gray-500">Special Notes:</label>
-              <p className="text-gray-900 dark:text-gray-100 text-sm mt-1">
-                {editableData.attestation.special_notes}
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Total Pages:</label>
+              <p className="text-lg font-semibold mt-1 text-blue-600 dark:text-blue-400">
+                {editableData.total_pages} pages
               </p>
             </div>
           )}
@@ -230,6 +140,153 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
       )}
     </Card>
   )
+  
+  // Main Information Section
+  const MainInfoSection = () => (
+    <Card className="mb-4">
+      <CardHeader 
+        className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" 
+        onClick={() => toggleSection('main')}
+      >
+        <CardTitle className="flex items-center space-x-2">
+          {expandedSections.has('main') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+          <span>Extracted Information</span>
+        </CardTitle>
+      </CardHeader>
+      {expandedSections.has('main') && (
+        <CardContent className="space-y-4">
+          {editableData.people && editableData.people.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                People ({editableData.people.length}):
+              </label>
+              {renderArrayValues(editableData.people)}
+            </div>
+          )}
+          
+          {editableData.organizations && editableData.organizations.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                Organizations ({editableData.organizations.length}):
+              </label>
+              {renderArrayValues(editableData.organizations)}
+            </div>
+          )}
+          
+          {editableData.locations && editableData.locations.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                Locations ({editableData.locations.length}):
+              </label>
+              {renderArrayValues(editableData.locations)}
+            </div>
+          )}
+          
+          {editableData.dates && editableData.dates.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                Dates ({editableData.dates.length}):
+              </label>
+              {renderArrayValues(editableData.dates)}
+            </div>
+          )}
+          
+          {editableData.numbers && editableData.numbers.length > 0 && (
+            <div>
+              <label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2 block">
+                Numbers ({editableData.numbers.length}):
+              </label>
+              {renderArrayValues(editableData.numbers)}
+            </div>
+          )}
+          
+          <div>
+            <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Signature Detected:</label>
+            <div className="mt-1">{renderValue(editableData.signature_detected)}</div>
+          </div>
+        </CardContent>
+      )}
+    </Card>
+  )
+  
+  // Individual Pages Section (for multi-page documents)
+  const PagesSection = () => {
+    if (!editableData.pages || editableData.pages.length === 0) {
+      return null
+    }
+    
+    return (
+      <Card className="mb-4">
+        <CardHeader 
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" 
+          onClick={() => toggleSection('pages')}
+        >
+          <CardTitle className="flex items-center space-x-2">
+            {expandedSections.has('pages') ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            <span>Individual Pages ({editableData.pages.length})</span>
+          </CardTitle>
+        </CardHeader>
+        {expandedSections.has('pages') && (
+          <CardContent className="space-y-4">
+            {editableData.pages.map((page: Record<string, unknown>, index: number) => (
+              <Card key={index} className="border border-gray-200 dark:border-gray-700">
+                <CardHeader 
+                  className="cursor-pointer bg-gray-50 dark:bg-gray-800"
+                  onClick={() => toggleSection(`page-${index}`)}
+                >
+                  <CardTitle className="flex items-center space-x-2 text-base">
+                    {expandedSections.has(`page-${index}`) ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    <span>Page {(page.page_number as number) || index + 1}</span>
+                    <span className="text-sm font-normal text-gray-500">
+                      ({(page.document_type as string) || 'Unknown'})
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                {expandedSections.has(`page-${index}`) && (
+                  <CardContent className="pt-4">
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400">Type:</span>
+                          <p className="font-medium">{(page.document_type as string) || 'Unknown'}</p>
+                        </div>
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400">Confidence:</span>
+                          <p className="font-medium">{(((page.confidence as number) || 0) * 100).toFixed(0)}%</p>
+                        </div>
+                      </div>
+                      
+                      {page.title ? (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">Title:</span>
+                          <p className="text-sm">{String(page.title)}</p>
+                        </div>
+                      ) : null}
+                      
+                      {page.summary ? (
+                        <div>
+                          <span className="text-gray-500 dark:text-gray-400 text-sm">Summary:</span>
+                          <p className="text-sm">{String(page.summary)}</p>
+                        </div>
+                      ) : null}
+                      
+                      {page.signature_detected ? (
+                        <div className="pt-2 border-t">
+                          <span className="text-green-600 dark:text-green-400 text-sm font-medium">
+                            ✓ Signature detected on this page
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+            ))}
+          </CardContent>
+        )}
+      </Card>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -256,16 +313,15 @@ export const JsonEditor: React.FC<JsonEditorProps> = ({
 
       {/* Content */}
       <div className="space-y-4">
-        <PolicySection />
-        <AnimalsSection />
-        <VeterinarySection />
-        <AttestationSection />
+        <SummarySection />
+        <MainInfoSection />
+        <PagesSection />
       </div>
 
       {/* Raw JSON Toggle */}
       <Card>
         <CardHeader 
-          className="cursor-pointer" 
+          className="cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800" 
           onClick={() => toggleSection('raw')}
         >
           <CardTitle className="flex items-center space-x-2">

@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { FileText, Eye, FileCode, Download, Moon, Sun, ArrowLeft, EyeOff, SidebarOpen, SidebarClose } from 'lucide-react'
+import { FileText, Eye, FileCode, Download, Moon, Sun, ArrowLeft, EyeOff, SidebarOpen, SidebarClose, Shield, MessageSquare } from 'lucide-react'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { documentApi } from '../api/client'
 import { useDocumentStore } from '../store/document'
 import VisualView from './VisualView'
 import { MarkdownView } from './MarkdownView'
-import { JsonView } from './JsonView'
+import { StructuredDataView } from '../components/StructuredDataView'
+import InsuranceRecommendation from '../components/InsuranceRecommendation'
+import InsuranceChatbot from '../components/InsuranceChatbot'
 
 export const DocumentReviewLayout: React.FC = () => {
   const { id } = useParams<{ id: string }>()
@@ -19,7 +21,6 @@ export const DocumentReviewLayout: React.FC = () => {
   const {
     currentDocument,
     setCurrentDocument,
-    setRegions,
     setJsonData,
     setMarkdown,
     currentTab,
@@ -27,7 +28,8 @@ export const DocumentReviewLayout: React.FC = () => {
     theme,
     toggleTheme,
     currentPage,
-    setCurrentPage
+    setCurrentPage,
+    uploadedDocumentIds,
   } = useDocumentStore()
   
   // Fetch document info
@@ -37,41 +39,78 @@ export const DocumentReviewLayout: React.FC = () => {
     enabled: !!id,
   })
   
-  // Fetch regions
-  const { data: regions } = useQuery({
-    queryKey: ['document-regions', id],
-    queryFn: () => documentApi.getDocumentRegions(id!),
-    enabled: !!id,
-  })
-  
   // Fetch JSON data
   const { data: jsonData } = useQuery({
     queryKey: ['document-json', id],
     queryFn: () => documentApi.getDocumentJson(id!),
     enabled: !!id,
+    retry: 1,
   })
   
   // Fetch markdown
-  const { data: markdown } = useQuery({
+  const { data: markdown, isLoading: markdownLoading, error: markdownError } = useQuery({
     queryKey: ['document-markdown', id],
-    queryFn: () => documentApi.getDocumentMarkdown(id!),
+    queryFn: async () => {
+      try {
+        const result = await documentApi.getDocumentMarkdown(id!)
+        console.log('✅ Markdown API response:', result)
+        return result
+      } catch (error) {
+        console.error('❌ Markdown API error:', error)
+        throw error
+      }
+    },
     enabled: !!id,
+    retry: 1,
   })
+  
+  // Fetch insurance recommendation
+  const { data: recommendationData } = useQuery({
+    queryKey: ['document-recommendation', id],
+    queryFn: async () => {
+      try {
+        const result = await documentApi.getInsuranceRecommendation(id!)
+        console.log('✅ Insurance recommendation:', result)
+        return result
+      } catch (error) {
+        console.error('❌ Recommendation API error:', error)
+        return null
+      }
+    },
+    enabled: !!id,
+    retry: 1,
+  })
+  
+  // Debug logging
+  useEffect(() => {
+    console.log('📊 Markdown state:', { 
+      markdown, 
+      markdownLoading, 
+      markdownError,
+      type: typeof markdown,
+      length: markdown?.length 
+    })
+  }, [markdown, markdownLoading, markdownError])
+  
+  // Reset markdown when document ID changes
+  useEffect(() => {
+    console.log('🔄 Document ID changed to:', id)
+    setMarkdown(null!) // Reset to null to show loading state
+  }, [id, setMarkdown])
   
   useEffect(() => {
     if (documentInfo) setCurrentDocument(documentInfo)
   }, [documentInfo, setCurrentDocument])
   
   useEffect(() => {
-    if (regions) setRegions(regions)
-  }, [regions, setRegions])
-  
-  useEffect(() => {
     if (jsonData) setJsonData(jsonData)
   }, [jsonData, setJsonData])
   
   useEffect(() => {
-    if (markdown) setMarkdown(markdown)
+    if (markdown !== undefined) {
+      console.log('Setting markdown to store:', markdown)
+      setMarkdown(markdown)
+    }
   }, [markdown, setMarkdown])
   
   useEffect(() => {
@@ -84,20 +123,20 @@ export const DocumentReviewLayout: React.FC = () => {
   }
   
   const handleDownload = () => {
-    if (currentTab === 'markdown' && markdown) {
-      const blob = new Blob([markdown], { type: 'text/markdown' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${currentDocument?.document_id || 'document'}.md`
-      a.click()
-      URL.revokeObjectURL(url)
-    } else if (currentTab === 'json' && jsonData) {
+    if (currentTab === 'json' && jsonData) {
       const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `${currentDocument?.document_id || 'document'}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } else if (currentTab === 'markdown' && markdown) {
+      const blob = new Blob([markdown], { type: 'text/markdown' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `${currentDocument?.document_id || 'document'}.md`
       a.click()
       URL.revokeObjectURL(url)
     }
@@ -193,6 +232,26 @@ export const DocumentReviewLayout: React.FC = () => {
         </div>
       </header>
       
+      {/* Document Tabs - Hiển thị khi có nhiều documents */}
+      {uploadedDocumentIds.length > 1 && (
+        <div className="border-b border-border bg-card">
+          <div className="flex items-center px-6 py-2 overflow-x-auto space-x-2">
+            {uploadedDocumentIds.map((docId, index) => (
+              <Button
+                key={docId}
+                variant={id === docId ? "default" : "outline"}
+                size="sm"
+                onClick={() => navigate(`/documents/${docId}`)}
+                className="whitespace-nowrap"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                Document {index + 1}
+              </Button>
+            ))}
+          </div>
+        </div>
+      )}
+      
       {/* Main Content - Split Layout */}
       <main className="flex-1 flex overflow-hidden">
         {/* Visual Panel */}
@@ -221,30 +280,53 @@ export const DocumentReviewLayout: React.FC = () => {
         )}
         
         {/* Analysis Content Panel */}
-        <div className={`flex-1 bg-background transition-all duration-300 ${
+        <div className={`flex-1 bg-background transition-all duration-300 overflow-hidden ${
           !showVisual ? 'w-full' : showVisual && sidebarCollapsed ? 'w-full' : 'w-1/2'
         }`}>
-          <div className="p-6 h-full flex flex-col">
+          <div className="p-6 h-full flex flex-col overflow-hidden">
             {/* Tabs for different analysis views */}
-            <Tabs value={currentTab} onValueChange={handleTabChange} className="flex-1 flex flex-col">
-              <TabsList className="grid w-full grid-cols-2 max-w-md mb-4">
-                <TabsTrigger value="markdown" className="flex items-center space-x-2">
-                  <FileText size={16} />
-                  <span>Markdown</span>
-                </TabsTrigger>
+            <Tabs value={currentTab} onValueChange={handleTabChange} className="flex-1 flex flex-col overflow-hidden">
+              <TabsList className="grid w-full grid-cols-4 max-w-4xl mb-4 flex-shrink-0">
                 <TabsTrigger value="json" className="flex items-center space-x-2">
                   <FileCode size={16} />
-                  <span>JSON</span>
+                  <span>Structured Data</span>
+                </TabsTrigger>
+                <TabsTrigger value="markdown" className="flex items-center space-x-2">
+                  <FileText size={16} />
+                  <span>Full Content</span>
+                </TabsTrigger>
+                <TabsTrigger value="recommendation" className="flex items-center space-x-2">
+                  <Shield size={16} />
+                  <span>Recommendations</span>
+                </TabsTrigger>
+                <TabsTrigger value="chat" className="flex items-center space-x-2">
+                  <MessageSquare size={16} />
+                  <span>AI Advisor</span>
                 </TabsTrigger>
               </TabsList>
               
-              <TabsContent value="markdown" className="flex-1 overflow-hidden">
-                <MarkdownView />
-              </TabsContent>
-              
-              <TabsContent value="json" className="flex-1 overflow-hidden">
-                <JsonView />
-              </TabsContent>
+              <div className="flex-1 overflow-hidden min-h-0">
+                <TabsContent value="json" className="h-full data-[state=active]:flex data-[state=active]:flex-col">
+                  <div className="flex-1 overflow-auto">
+                    <StructuredDataView jsonData={jsonData || null} />
+                  </div>
+                </TabsContent>
+                
+                <TabsContent value="markdown" className="h-full data-[state=active]:block">
+                  <MarkdownView />
+                </TabsContent>
+                
+                <TabsContent value="recommendation" className="h-full data-[state=active]:block">
+                  <InsuranceRecommendation 
+                    jsonData={jsonData || null} 
+                    recommendationData={recommendationData || undefined}
+                  />
+                </TabsContent>
+                
+                <TabsContent value="chat" className="h-full data-[state=active]:flex data-[state=active]:flex-col">
+                  <InsuranceChatbot documentId={id!} jsonData={jsonData || null} />
+                </TabsContent>
+              </div>
             </Tabs>
           </div>
         </div>
@@ -258,7 +340,6 @@ export const DocumentReviewLayout: React.FC = () => {
               <span>Document ID: {currentDocument.document_id}</span>
               <span>Status: {currentDocument.status}</span>
               <span>Pages: {currentDocument.pages?.length || 0}</span>
-              <span>Regions: {regions?.length || 0}</span>
             </div>
             <div>
               Last Updated: {new Date().toLocaleDateString()}

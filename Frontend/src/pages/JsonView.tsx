@@ -27,35 +27,31 @@ export const JsonView: React.FC = () => {
   
   if (!jsonData) {
     return (
-      <div className="p-6">
-        <Card>
-          <CardContent className="flex items-center justify-center py-12">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-400" />
-              <p className="text-gray-500 dark:text-gray-400">Loading JSON data...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Card className="h-full flex items-center justify-center">
+        <CardContent className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-500 dark:text-gray-400">Loading JSON data...</p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
   
   return (
-    <div className="p-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <FileCode size={20} />
-            <span>Extracted Data (JSON)</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <JsonEditor
-            data={jsonData}
-            onSave={handleSave}
-          />
-        </CardContent>
-      </Card>
-    </div>
+    <Card className="h-full flex flex-col">
+      <CardHeader className="flex-shrink-0">
+        <CardTitle className="flex items-center space-x-2">
+          <FileCode size={20} />
+          <span>Extracted Data (JSON)</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex-1 overflow-auto">
+        <JsonEditor
+          data={jsonData}
+          onSave={handleSave}
+        />
+      </CardContent>
+    </Card>
   )
 }

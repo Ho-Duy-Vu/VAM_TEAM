@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 interface MarkdownRendererProps {
   content: string
@@ -13,6 +14,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   return (
     <div className={`prose prose-slate dark:prose-invert max-w-none ${className}`}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           // Custom heading styles
           h1: ({ children }) => (
@@ -55,27 +57,39 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             </li>
           ),
           
-          // Custom table styles
+          // Custom table styles - Enhanced for better readability
           table: ({ children }) => (
-            <div className="overflow-x-auto mb-6">
-              <table className="min-w-full border border-gray-200 dark:border-gray-700 rounded-lg">
+            <div className="overflow-x-auto mb-6 shadow-md rounded-lg border border-gray-300 dark:border-gray-600">
+              <table className="min-w-full divide-y divide-gray-300 dark:divide-gray-600 border-collapse">
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead className="bg-gray-50 dark:bg-gray-800">
+            <thead className="bg-gradient-to-r from-blue-100 to-indigo-100 dark:from-gray-700 dark:to-gray-600">
               {children}
             </thead>
           ),
+          tbody: ({ children }) => (
+            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+              {children}
+            </tbody>
+          ),
+          tr: ({ children }) => (
+            <tr className="hover:bg-blue-50 dark:hover:bg-gray-700 transition-colors duration-150">
+              {children}
+            </tr>
+          ),
           th: ({ children }) => (
-            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-900 dark:text-gray-100 border-b border-gray-200 dark:border-gray-700">
+            <th className="px-4 py-3 text-left text-xs font-bold text-gray-800 dark:text-gray-100 uppercase tracking-wide border-r border-gray-300 dark:border-gray-600 last:border-r-0 bg-gradient-to-b from-transparent to-blue-50/30">
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 border-b border-gray-200 dark:border-gray-700">
-              {children}
+            <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-200 border-r border-gray-200 dark:border-gray-700 last:border-r-0">
+              <div className="max-w-xs overflow-hidden text-ellipsis">
+                {children}
+              </div>
             </td>
           ),
           
