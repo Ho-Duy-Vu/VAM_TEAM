@@ -1,6 +1,9 @@
 # VAM TEAM - Document Intelligence System
-**Author:** Hồ Duy Vũ  
-📧 **Email:** duyvu11092004@gmail.com
+
+Author: Hồ Duy Vũ – Software Engineer | AI & Backend Developer
+GitHub: https://github.com/Ho-Duy-Vu
+Email: duyvu11092004@gmail.com
+
 
 ## Overview
 A full-stack document intelligence system for processing and analyzing Animal Health Certificates and insurance documents using AI-powered document processing.
